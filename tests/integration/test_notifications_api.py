@@ -1,4 +1,5 @@
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from unittest.mock import AsyncMock
 
 from app.api.deps import get_session
@@ -22,7 +23,7 @@ async def test_notification_api_lists_pending_and_marks_delivered(session):
     )
     await session.commit()
     notification = (await session.execute(
-        __import__("sqlalchemy").select(Notification).where(Notification.customer_telegram_id == 7001)
+        select(Notification).where(Notification.customer_telegram_id == 7001)
     )).scalar_one()
 
     client = await _client_for_session(session)
