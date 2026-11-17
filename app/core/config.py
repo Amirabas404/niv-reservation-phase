@@ -7,7 +7,7 @@ them without redeploying.
 
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     timezone: str = Field(default="Asia/Tehran", description="Display/business timezone (IANA name)")
 
     database_url: str = Field(..., description="postgresql+asyncpg://user:pass@host:port/db")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        """Use asyncpg for Railway's default PostgreSQL URLs."""
+        if isinstance(value, str):
+            if value.startswith("postgres://"):
+                return "postgresql+asyncpg://" + value[len("postgres://"):]
+            if value.startswith("postgresql://"):
+                return "postgresql+asyncpg://" + value[len("postgresql://"):]
+        return value
     redis_url: str = "redis://localhost:6379/0"
 
     admin_service_token: SecretStr = Field(..., description="Shared secret for the management bot only")
