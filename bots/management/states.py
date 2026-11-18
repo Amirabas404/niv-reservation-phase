@@ -20,3 +20,8 @@ class PriceFlow(StatesGroup):
 
 class SupportFlow(StatesGroup):
     chatting = State()
+
+
+class BankCardFlow(StatesGroup):
+    card_number = State()
+    owner_name = State()
