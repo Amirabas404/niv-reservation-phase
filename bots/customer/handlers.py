@@ -22,6 +22,8 @@ from bots.customer.formatting import (
     upcoming_dates,
 )
 from bots.customer.states import BookingStates, ReceiptStates, StatusStates, SupportStates
+from app.core.phone import normalize_phone
+from app.domain.errors import InvalidPhoneError
 
 log = logging.getLogger(__name__)
 router = Router(name="customer")
@@ -242,13 +244,14 @@ async def enter_name(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(BookingStates.phone, F.contact)
-async def enter_phone(message: Message, state: FSMContext, backend: BackendClient) -> None:
-    if message.contact.user_id not in (None, message.from_user.id):
-        await message.answer("لطفاً شماره خودتان را با دکمه ارسال شماره من بفرستید.")
+async def _accept_booking_phone(message: Message, state: FSMContext, backend: BackendClient, raw_phone: str) -> None:
+    try:
+        phone = normalize_phone(raw_phone)
+    except InvalidPhoneError as exc:
+        await message.answer(exc.message, reply_markup=kb.contact_request())
         return
+
     data = await state.get_data()
-    phone = message.contact.phone_number
     await state.update_data(phone=phone)
     payload = {
         "space_code": data["space"],
@@ -260,11 +263,10 @@ async def enter_phone(message: Message, state: FSMContext, backend: BackendClien
     try:
         quote = await backend.quote(payload)
     except BackendError as exc:
-        await state.set_state(BookingStates.date)
+        await state.clear()
         await message.answer(exc.message, reply_markup=kb.main_menu())
         if exc.support_offer:
             await message.answer("اگر مایل هستید، می‌توانید با پشتیبانی صحبت کنید.", reply_markup=kb.support_offer_kb())
-        await state.clear()
         return
 
     await state.update_data(quote_total=quote["total"])
@@ -273,9 +275,17 @@ async def enter_phone(message: Message, state: FSMContext, backend: BackendClien
     await message.answer(_booking_summary(await state.get_data(), quote), reply_markup=kb.confirm_kb())
 
 
+@router.message(BookingStates.phone, F.contact)
+async def enter_phone(message: Message, state: FSMContext, backend: BackendClient) -> None:
+    if message.contact.user_id not in (None, message.from_user.id):
+        await message.answer("لطفاً شماره خودتان را با دکمه ارسال شماره من بفرستید.")
+        return
+    await _accept_booking_phone(message, state, backend, message.contact.phone_number)
+
+
 @router.message(BookingStates.phone, F.text)
-async def phone_not_shared(message: Message) -> None:
-    await message.answer("لطفاً از دکمه «ارسال شماره من» استفاده کنید.", reply_markup=kb.contact_request())
+async def enter_phone_text(message: Message, state: FSMContext, backend: BackendClient) -> None:
+    await _accept_booking_phone(message, state, backend, message.text.strip())
 
 
 @router.callback_query(BookingStates.confirm, F.data == "restart")
@@ -349,9 +359,14 @@ async def status_show(message: Message, state: FSMContext, backend: BackendClien
     if message.contact.user_id not in (None, message.from_user.id):
         await message.answer("لطفاً شماره خودتان را ارسال کنید.")
         return
+    try:
+        phone = normalize_phone(message.contact.phone_number)
+    except InvalidPhoneError as exc:
+        await message.answer(exc.message, reply_markup=kb.contact_request())
+        return
     await state.clear()
     try:
-        items = await backend.list_reservations(message.contact.phone_number)
+        items = await backend.list_reservations(phone)
     except BackendError as exc:
         await message.answer(exc.message, reply_markup=kb.main_menu())
         return
