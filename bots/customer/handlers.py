@@ -376,9 +376,9 @@ async def _show_reservations(message: Message, state: FSMContext, backend: Backe
     for r in items:
         status = r["status"]
         text = (
-            f"کد: {r['public_code']}\\n"
-            f"📅 {jalali_datetime_label(datetime.fromisoformat(r['booking_start']))}\\n"
-            f"👥 {fa(r['party_size'])} نفر · {SPACE_NAMES.get(r['space_name'], r['space_name'])}\\n"
+            f"کد: {r['public_code']}\n"
+            f"📅 {jalali_datetime_label(datetime.fromisoformat(r['booking_start']))}\n"
+            f"👥 {fa(r['party_size'])} نفر · {SPACE_NAMES.get(r['space_name'], r['space_name'])}\n"
             f"وضعیت: {STATUS_NAMES.get(status, status)}"
         )
         can_receipt = status == "awaiting_payment"
