@@ -327,7 +327,7 @@ async def price_field_pick(cb: CallbackQuery, state: FSMContext) -> None:
 @router.message(BankCardFlow.card_number, F.text)
 async def bank_card_number(message: Message, state: FSMContext) -> None:
     card = message.text.strip().translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "0123456789" * 2))
-    if not re.fullmatch(r"\\d{16}", card):
+    if not re.fullmatch(r"\d{16}", card):
         await message.answer("شماره کارت باید دقیقاً ۱۶ رقم باشد. دوباره وارد کنید:")
         return
     await state.update_data(card_number=card)
