@@ -282,10 +282,20 @@ async def price_fields(cb: CallbackQuery, state: FSMContext, backend: AdminBacke
     key = cb.data.split(":", 1)[1]
     setting = await backend.get_setting(cb.from_user.id, key)
     fields = flatten_leaves(setting["value"])
+    if key == "bank_card":
+        preferred = [("card_number",), ("owner_name",)]
+        by_path = {path: value for path, value in fields}
+        fields = [(path, by_path[path]) for path in preferred if path in by_path]
+    labels = {
+        ("card_number",): "شماره کارت",
+        ("owner_name",): "نام صاحب کارت",
+    }
     await state.update_data(setting_key=key, version=setting["version"], fields=[list(p) for p, _ in fields])
     buttons = []
     for idx, (path, value) in enumerate(fields):
-        buttons.append([IB(text=f"{'.'.join(path)} = {value}", callback_data=f"sf:{idx}")])
+        label = labels.get(path, ".".join(path))
+        shown = "ثبت نشده" if key == "bank_card" and not value else str(value)
+        buttons.append([IB(text=f"{label} · {shown}", callback_data=f"sf:{idx}")])
     await cb.message.answer("کدام مقدار را تغییر می‌دهید؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons[:40]))
     await cb.answer()
 
@@ -295,8 +305,15 @@ async def price_field_pick(cb: CallbackQuery, state: FSMContext) -> None:
     idx = int(cb.data.split(":", 1)[1])
     data = await state.get_data()
     await state.set_state(PriceFlow.value)
-    await state.update_data(field_path=data["fields"][idx])
-    await cb.message.answer("مقدار جدید را وارد کنید:")
+    field_path = data["fields"][idx]
+    await state.update_data(field_path=field_path)
+    field_labels = {
+        ("card_number",): "شماره کارت",
+        ("owner_name",): "نام صاحب کارت",
+    }
+    label = field_labels.get(tuple(field_path), ".".join(field_path))
+    instruction = "۱۶ رقم بدون فاصله وارد کنید." if tuple(field_path) == ("card_number",) else "نام و نام خانوادگی صاحب کارت را وارد کنید." if tuple(field_path) == ("owner_name",) else "مقدار جدید را وارد کنید:"
+    await cb.message.answer(f"{label} را وارد کنید.\n{instruction}")
     await cb.answer()
 
 
