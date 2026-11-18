@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+import re
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
@@ -14,7 +15,7 @@ from bots.management.backend import AdminBackend, AdminBackendError
 from bots.management.formatting import describe_reservation, flatten_leaves, parse_new_value, set_nested
 from app.services.report_text import format_daily
 from bots.customer.formatting import fa
-from bots.management.states import CapacityFlow, ConfirmFlow, PriceFlow, RejectFlow, SupportFlow
+from bots.management.states import BankCardFlow, CapacityFlow, ConfirmFlow, PriceFlow, RejectFlow, SupportFlow
 
 log = logging.getLogger(__name__)
 router = Router(name="management")
@@ -281,6 +282,12 @@ async def price_fields(cb: CallbackQuery, state: FSMContext, backend: AdminBacke
 
     key = cb.data.split(":", 1)[1]
     setting = await backend.get_setting(cb.from_user.id, key)
+    if key == "bank_card":
+        await state.clear()
+        await state.set_state(BankCardFlow.card_number)
+        await cb.message.answer("برای تغییر اطلاعات کارت، ابتدا شماره کارت ۱۶ رقمی را با ارقام انگلیسی یا فارسی وارد کنید:")
+        await cb.answer()
+        return
     fields = flatten_leaves(setting["value"])
     if key == "bank_card":
         preferred = [("card_number",), ("owner_name",)]
@@ -315,6 +322,35 @@ async def price_field_pick(cb: CallbackQuery, state: FSMContext) -> None:
     instruction = "۱۶ رقم بدون فاصله وارد کنید." if tuple(field_path) == ("card_number",) else "نام و نام خانوادگی صاحب کارت را وارد کنید." if tuple(field_path) == ("owner_name",) else "مقدار جدید را وارد کنید:"
     await cb.message.answer(f"{label} را وارد کنید.\n{instruction}")
     await cb.answer()
+
+
+@router.message(BankCardFlow.card_number, F.text)
+async def bank_card_number(message: Message, state: FSMContext) -> None:
+    card = message.text.strip().translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "0123456789" * 2))
+    if not re.fullmatch(r"\\d{16}", card):
+        await message.answer("شماره کارت باید دقیقاً ۱۶ رقم باشد. دوباره وارد کنید:")
+        return
+    await state.update_data(card_number=card)
+    await state.set_state(BankCardFlow.owner_name)
+    await message.answer("حالا نام و نام خانوادگی صاحب کارت را وارد کنید:")
+
+
+@router.message(BankCardFlow.owner_name, F.text)
+async def bank_card_owner(message: Message, state: FSMContext, backend: AdminBackend) -> None:
+    owner = message.text.strip()
+    if len(owner) < 2:
+        await message.answer("نام صاحب کارت معتبر نیست. دوباره وارد کنید:")
+        return
+    data = await state.get_data()
+    current = await backend.get_setting(message.from_user.id, "bank_card")
+    value = {"card_number": data["card_number"], "owner_name": owner}
+    try:
+        await backend.put_setting(message.from_user.id, "bank_card", value, current["version"])
+    except AdminBackendError as exc:
+        await message.answer(exc.message)
+        return
+    await state.clear()
+    await message.answer("اطلاعات کارت بانکی با موفقیت ذخیره شد ✅")
 
 
 @router.message(PriceFlow.value, F.text)
