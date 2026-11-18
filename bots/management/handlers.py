@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 router = Router(name="management")
 
 PENDING = ["pending_manager_approval", "receipt_submitted"]
-SETTING_KEYS = ["pricing", "rules"]
+SETTING_KEYS = ["pricing", "rules", "bank_card"]
 
 
 async def _me(message_or_cb, backend: AdminBackend) -> dict | None:
@@ -268,8 +268,9 @@ async def prices(message: Message, backend: AdminBackend) -> None:
     from aiogram.types import InlineKeyboardMarkup
 
     rows = []
+    labels = {"pricing": "قیمت‌ها", "rules": "قوانین رزرو", "bank_card": "اطلاعات کارت بانکی"}
     for key in SETTING_KEYS:
-        rows.append([IB(text=f"ویرایش {key}", callback_data=f"sk:{key}")])
+        rows.append([IB(text=f"ویرایش {labels[key]}", callback_data=f"sk:{key}")])
     await message.answer("کدام بخش را ویرایش می‌کنید؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
