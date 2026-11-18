@@ -354,16 +354,14 @@ async def status_start(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(StatusStates.phone, F.contact)
-async def status_show(message: Message, state: FSMContext, backend: BackendClient) -> None:
-    if message.contact.user_id not in (None, message.from_user.id):
-        await message.answer("لطفاً شماره خودتان را ارسال کنید.")
-        return
+async def _show_reservations(message: Message, state: FSMContext, backend: BackendClient, raw_phone: str) -> None:
     try:
-        phone = normalize_phone(message.contact.phone_number)
+        phone = normalize_phone(raw_phone)
     except InvalidPhoneError as exc:
+        # Keep the phone-entry state active so the customer can retry.
         await message.answer(exc.message, reply_markup=kb.contact_request())
         return
+
     await state.clear()
     try:
         items = await backend.list_reservations(phone)
@@ -378,9 +376,9 @@ async def status_show(message: Message, state: FSMContext, backend: BackendClien
     for r in items:
         status = r["status"]
         text = (
-            f"کد: {r['public_code']}\n"
-            f"📅 {jalali_datetime_label(datetime.fromisoformat(r['booking_start']))}\n"
-            f"👥 {fa(r['party_size'])} نفر · {SPACE_NAMES.get(r['space_name'], r['space_name'])}\n"
+            f"کد: {r['public_code']}\\n"
+            f"📅 {jalali_datetime_label(datetime.fromisoformat(r['booking_start']))}\\n"
+            f"👥 {fa(r['party_size'])} نفر · {SPACE_NAMES.get(r['space_name'], r['space_name'])}\\n"
             f"وضعیت: {STATUS_NAMES.get(status, status)}"
         )
         can_receipt = status == "awaiting_payment"
@@ -390,6 +388,19 @@ async def status_show(message: Message, state: FSMContext, backend: BackendClien
             reply_markup=kb.reservation_actions_kb(r["public_code"], can_receipt, can_cancel)
             if (can_receipt or can_cancel) else None,
         )
+
+
+@router.message(StatusStates.phone, F.contact)
+async def status_show(message: Message, state: FSMContext, backend: BackendClient) -> None:
+    if message.contact.user_id not in (None, message.from_user.id):
+        await message.answer("لطفاً شماره خودتان را ارسال کنید.", reply_markup=kb.contact_request())
+        return
+    await _show_reservations(message, state, backend, message.contact.phone_number)
+
+
+@router.message(StatusStates.phone, F.text)
+async def status_show_text(message: Message, state: FSMContext, backend: BackendClient) -> None:
+    await _show_reservations(message, state, backend, message.text.strip())
 
 
 @router.callback_query(F.data.startswith("cx:"))
