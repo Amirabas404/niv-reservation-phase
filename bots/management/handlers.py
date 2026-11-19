@@ -244,12 +244,12 @@ async def resume_table_assignment(cb: CallbackQuery, state: FSMContext, backend:
         return
     tables = await backend.tables(cb.from_user.id, item["space_code"], code)
     if not tables:
-        await cb.answer("هنوز میز آزاد و قابل استفاده‌ای وجود ندارد.", show_alert=True)
+        await cb.answer("میزی برای نمایش وجود ندارد؛ وضعیت میزها را در بخش «میزها» بررسی کنید.", show_alert=True)
         return
     await state.set_state(ConfirmFlow.picking)
     await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
     await cb.message.answer(
-        f"میزهای آزاد رزرو {code} را انتخاب کنید. تعداد نفرات: {item['party_size']}",
+        f"میزهای این رزرو را بررسی و انتخاب کنید. تعداد نفرات: {item['party_size']}",
         reply_markup=kb.tables_picker(tables, set()),
     )
     await cb.answer()
@@ -279,7 +279,7 @@ async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBac
     await state.set_state(ConfirmFlow.picking)
     await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
     await cb.message.answer(
-        f"پرداخت {code} تأیید شد ✅\nاکنون فقط از میان میزهای آزاد انتخاب کنید.\nتعداد نفرات: {item['party_size']}",
+        f"پرداخت {code} تأیید شد ✅\nاکنون میز موردنظر را با بررسی وضعیت و تداخل‌ها انتخاب کنید.\nتعداد نفرات: {item['party_size']}",
         reply_markup=kb.tables_picker(tables, set()),
     )
     await cb.answer()
