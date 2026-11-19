@@ -345,7 +345,7 @@ async def confirm_reservation(
     )
 
     if reservation.created_by_telegram_id:
-        from app.domain.pricing import DESIGN_LABELS, SPACE_LABELS
+        from app.domain.pricing import DESIGN_LABELS
         from app.core.timezone import to_jalali_str
         from app.services.notification_service import enqueue
 
@@ -365,7 +365,7 @@ async def confirm_reservation(
             f"نام مشتری: {customer_name}",
             f"شماره تماس: {customer_phone}",
             f"تاریخ و ساعت: {to_jalali_str(reservation.booking_start)}",
-            f"فضا: {SPACE_LABELS.get(reservation.design and reservation.space_id, space_name) if False else space_name}",
+            f"فضا: {space_name}",
             f"تعداد نفرات: {reservation.party_size}",
         ]
         if reservation.design != DesignCode.NONE.value:
