@@ -199,7 +199,7 @@ async def show_receipt(cb: CallbackQuery, backend: AdminBackend) -> None:
 
 
 @router.callback_query(F.data.startswith("pay:"))
-async def verify_payment(cb: CallbackQuery, backend: AdminBackend) -> None:
+async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
     code = cb.data.split(":", 1)[1]
     items = await backend.reservations(cb.from_user.id, ["receipt_submitted"])
     item = next((i for i in items if i["public_code"] == code), None)
