@@ -81,15 +81,6 @@ async def approve_cancellation(cb: CallbackQuery, backend: AdminBackend) -> None
     except AdminBackendError as exc:
         await cb.answer(exc.message, show_alert=True)
         return
-    customer_id = result.get("telegram_user_id")
-    if customer_id:
-        try:
-            await cb.bot.send_message(
-                customer_id,
-                "درخواست لغو شما تأیید شد و مبلغ پرداختی، پس از کسر هزینه کنسلی، حداکثر تا ۴۸ ساعت کاری به شما بازگردانده خواهد شد. 🌷",
-            )
-        except Exception:
-            log.exception("Could not send cancellation approval notice for %s", code)
     await cb.message.answer(f"درخواست لغو رزرو {code} تأیید شد. مبلغ قابل استرداد: {fa(result.get('refund_amount', 0))} تومان")
     await cb.answer("درخواست لغو تأیید شد ✅")
 
