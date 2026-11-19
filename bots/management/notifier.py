@@ -35,13 +35,16 @@ class TicketNotifier:
                 log.exception("notifier loop error")
             await asyncio.sleep(interval)
 
-    async def _send(self, chat_id: int, text: str, markup=None) -> None:
+    async def _send(self, chat_id: int, text: str, markup=None) -> bool:
         try:
             await self._bot.send_message(chat_id, text, reply_markup=markup)
+            return True
         except TelegramAPIError:
             log.warning("could not notify staff %s (have they started the bot?)", chat_id)
+            return False
 
     async def tick(self) -> None:
+        await self._notify_manager_events()
         tickets = await self._backend.tickets(self._actor, ["open", "claimed"])
         if not self._initialized:
             for t in tickets:
@@ -72,3 +75,18 @@ class TicketNotifier:
                 elif t["status"] == "open":
                     for member in team:
                         await self._send(member["telegram_user_id"], preview, kb.ticket_actions(t, -1))
+
+    async def _notify_manager_events(self) -> None:
+        events = await self._backend.manager_notifications(self._actor)
+        if not events:
+            return
+        team = await self._backend.team(self._actor)
+        if not team:
+            return
+        for event in events:
+            delivered = True
+            for member in team:
+                ok = await self._send(member["telegram_user_id"], event["text"])
+                delivered = delivered and ok
+            if delivered:
+                await self._backend.manager_notification_delivered(self._actor, event["id"])
