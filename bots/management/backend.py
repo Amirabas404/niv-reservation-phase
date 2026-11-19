@@ -30,7 +30,7 @@ class AdminBackend:
                 body = r.json()
             except ValueError:
                 body = {}
-            raise AdminBackendError(r.status_code, body.get("message") or "خطایی رخ داد.")
+            raise AdminBackendError(r.status_code, body.get("message") or body.get("detail") or "خطایی رخ داد.")
         if r.status_code == 204 or not r.content:
             return None
         if r.headers.get("content-type", "").startswith("application/json"):
