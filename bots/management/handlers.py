@@ -28,10 +28,8 @@ async def _me(message_or_cb, backend: AdminBackend) -> dict | None:
     actor = message_or_cb.from_user.id
     try:
         return await backend.me(actor)
-    except AdminBackendError as exc:
-        if exc.status_code in (401, 403):
-            return None
-        raise
+    except AdminBackendError:
+        return None
 
 
 async def _need_manager(message: Message, backend: AdminBackend) -> dict | None:
@@ -44,13 +42,9 @@ async def _need_manager(message: Message, backend: AdminBackend) -> dict | None:
 
 @router.message(CommandStart())
 async def start(message: Message, backend: AdminBackend) -> None:
-    try:
-        me = await _me(message, backend)
-    except AdminBackendError as exc:
-        await message.answer(f"خطای ارتباط با سرور ({exc.status_code}): {exc.message}")
-        return
+    me = await _me(message, backend)
     if not me:
-        await message.answer("حساب تلگرام شما در فهرست مدیران فعال نیست. شناسه تلگرام خود را به مدیر اصلی بدهید تا دسترسی‌تان بررسی شود.")
+        await message.answer("شما به این ربات دسترسی ندارید.")
         return
     await message.answer(f"سلام {me['display_name']} 👋", reply_markup=kb.menu_for(me["role"]))
 
@@ -59,10 +53,9 @@ async def start(message: Message, backend: AdminBackend) -> None:
 
 @router.message(F.text == "درخواست‌های جدید")
 async def pending(message: Message, backend: AdminBackend) -> None:
-    try:
-        me = await _me(message, backend)
-    except AdminBackendError as exc:
-        await message.answer(exc.message if exc.status_code in (401, 403) else f"خطای سرور ({exc.status_code}): {exc.message}")
+    me = await _me(message, backend)
+    if not me:
+        await message.answer("دسترسی ندارید.")
         return
     try:
         items = await backend.reservations(message.from_user.id, PENDING)
