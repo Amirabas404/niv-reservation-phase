@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.errors import NotFoundError, PermissionDeniedError, SettingsVersionConflictError
 from app.domain.permissions import Permission, Role, has_permission, redact_amounts
 from app.domain.settings_validation import validate_setting
-from app.models import AdminUser, Customer, Payment, Reservation, Space, SystemSetting, Table, AuditLog
+from app.models import AdminUser, Customer, Payment, Reservation, Space, SystemSetting, Table, TableBooking, AuditLog
 from app.domain.errors import DomainError
 
 
