@@ -53,6 +53,7 @@ async def list_reservations(session: AsyncSession, ctx: AdminContext, statuses: 
     for r, name, phone, space_code, space_name, pay_status, expected in rows:
         record = {
             "public_code": r.public_code,
+            "telegram_user_id": r.created_by_telegram_id,
             "status": r.status,
             "booking_start": r.booking_start.isoformat(),
             "party_size": r.party_size,
