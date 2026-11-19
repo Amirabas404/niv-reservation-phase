@@ -1,4 +1,7 @@
 import secrets
+from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +20,7 @@ from app.schemas.admin import (
     SettingUpdate,
     TableUpdate,
 )
+from app.models import ManagerNotification
 from app.services import admin_service as admin
 from app.services import reservation_service as svc
 
@@ -160,3 +164,30 @@ async def put_setting(
     result = await admin.update_setting(session, ctx, key, body.value, body.expected_version)
     await session.commit()
     return result
+
+
+@router.get("/manager-notifications")
+async def manager_notifications(
+    ctx: admin.AdminContext = Depends(admin_context),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    rows = (await session.execute(
+        select(ManagerNotification)
+        .where(ManagerNotification.delivered_at.is_(None))
+        .order_by(ManagerNotification.id)
+        .limit(50)
+    )).scalars().all()
+    return [{"id": item.id, "text": item.text} for item in rows]
+
+
+@router.post("/manager-notifications/{notification_id}/delivered", status_code=204)
+async def manager_notification_delivered(
+    notification_id: int,
+    ctx: admin.AdminContext = Depends(admin_context),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    item = await session.get(ManagerNotification, notification_id)
+    if item is not None and item.delivered_at is None:
+        item.delivered_at = datetime.now(UTC)
+        await session.commit()
+    return Response(status_code=204)
