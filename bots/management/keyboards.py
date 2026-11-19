@@ -37,7 +37,7 @@ def chat_kb() -> ReplyKeyboardMarkup:
     )
 
 
-def request_actions(code: str, status: str, is_design: bool, can_manage: bool) -> InlineKeyboardMarkup | None:
+def request_actions(code: str, status: str, is_design: bool, can_manage: bool, payment_verified: bool = False) -> InlineKeyboardMarkup | None:
     if not can_manage:
         return None
     rows: list[list[IB]] = []
@@ -48,8 +48,11 @@ def request_actions(code: str, status: str, is_design: bool, can_manage: bool) -
                      IB(text="رد", callback_data=f"no:{code}")])
     if status == "receipt_submitted":
         rows.append([IB(text="نمایش رسید", callback_data=f"rc:{code}")])
-        rows.append([IB(text="تأیید پرداخت", callback_data=f"pay:{code}"),
-                     IB(text="رد پرداخت", callback_data=f"payno:{code}")])
+        if payment_verified:
+            rows.append([IB(text="تخصیص میز", callback_data=f"assign:{code}")])
+        else:
+            rows.append([IB(text="تأیید پرداخت", callback_data=f"pay:{code}"),
+                         IB(text="رد پرداخت", callback_data=f"payno:{code}")])
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
