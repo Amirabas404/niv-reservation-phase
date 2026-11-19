@@ -4,14 +4,13 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import select
 
-from app.domain.errors import TableConflictError
 from app.models import Table
 from app.services.reservation_service import confirm_reservation, create_reservation
 
 UTC = ZoneInfo("UTC")
 
 
-async def test_same_table_cannot_be_double_booked(session):
+async def test_manager_can_assign_same_table_despite_time_overlap(session):
     now = datetime(2026, 11, 9, 8, 0, tzinfo=UTC)
     start = datetime(2026, 11, 10, 10, 30, tzinfo=UTC)
     r1 = await create_reservation(session, now=now, customer_name="علی رضایی", phone="09120000001",
@@ -24,5 +23,5 @@ async def test_same_table_cannot_be_double_booked(session):
     await session.commit()
     await confirm_reservation(session, public_code=r1.public_code, table_ids=[table.id], actor_telegram_id=1)
     await session.commit()
-    with pytest.raises(TableConflictError):
-        await confirm_reservation(session, public_code=r2.public_code, table_ids=[table.id], actor_telegram_id=1)
+    await confirm_reservation(session, public_code=r2.public_code, table_ids=[table.id], actor_telegram_id=1)
+    await session.commit()
