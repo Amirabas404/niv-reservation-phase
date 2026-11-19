@@ -27,7 +27,7 @@ from app.domain.time_rules import (
     check_design_lead_time,
     validate_dine_in_start,
 )
-from app.models import AuditLog, Customer, Payment, Reservation, Space, Table, TableBooking
+from app.models import AuditLog, Customer, ManagerNotification, Payment, Reservation, Space, Table, TableBooking
 from app.services.settings_service import load_pricing, load_rules
 
 UTC = ZoneInfo("UTC")
@@ -394,6 +394,22 @@ async def cancel_by_customer(
         .where(TableBooking.reservation_id == reservation.id)
         .values(is_active=False)
     )
+    customer = await session.get(Customer, reservation.customer_id)
+    space = await session.get(Space, reservation.space_id)
+    booking_local = to_local(reservation.booking_start)
+    notice = (
+        "🚨 درخواست لغو رزرو توسط مشتری\\n\\n"
+        f"کد پیگیری: {reservation.public_code}\\n"
+        f"نام مشتری: {customer.full_name if customer else '—'}\\n"
+        f"شماره تماس: {customer.phone if customer else '—'}\\n"
+        f"فضا: {space.name if space else '—'}\\n"
+        f"زمان رزرو: {booking_local:%Y-%m-%d %H:%M}\\n"
+        f"تعداد نفرات: {reservation.party_size}\\n"
+        f"مبلغ کل: {reservation.total_amount:,} تومان\\n"
+        f"مبلغ قابل استرداد: {refund:,} تومان\\n\\n"
+        "وضعیت رزرو در سامانه: لغو شده"
+    )
+    session.add(ManagerNotification(text=notice))
     await _audit(
         session,
         telegram_user_id,
