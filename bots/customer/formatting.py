@@ -39,6 +39,7 @@ STATUS_NAMES = {
     "confirmed": "تأیید شده ✅",
     "rejected": "رد شده",
     "rejected_unpaid": "رد شده (عدم پرداخت)",
+    "cancellation_requested": "در انتظار تأیید لغو",
     "cancelled": "لغوشده",
 }
 
