@@ -137,10 +137,11 @@ async def receipt(
 @router.get("/tables")
 async def tables(
     space_code: str | None = None,
+    public_code: str | None = None,
     ctx: admin.AdminContext = Depends(admin_context),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    return await admin.list_tables(session, ctx, space_code)
+    return await admin.list_tables(session, ctx, space_code, public_code)
 
 
 @router.patch("/tables/{table_id}", status_code=204)
