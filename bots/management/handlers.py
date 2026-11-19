@@ -26,7 +26,12 @@ SETTING_KEYS = ["pricing", "rules", "bank_card"]
 
 async def _me(message_or_cb, backend: AdminBackend) -> dict | None:
     actor = message_or_cb.from_user.id
-    return await backend.me(actor)
+    try:
+        return await backend.me(actor)
+    except AdminBackendError as exc:
+        if exc.status_code in (401, 403):
+            return None
+        raise
 
 
 async def _need_manager(message: Message, backend: AdminBackend) -> dict | None:
@@ -42,10 +47,10 @@ async def start(message: Message, backend: AdminBackend) -> None:
     try:
         me = await _me(message, backend)
     except AdminBackendError as exc:
-        if exc.status_code in (401, 403):
-            await message.answer("حساب تلگرام شما در فهرست مدیران فعال نیست. شناسه تلگرام خود را به مدیر اصلی بدهید تا دسترسی‌تان بررسی شود.")
-        else:
-            await message.answer(f"خطای ارتباط با سرور ({exc.status_code}): {exc.message}")
+        await message.answer(f"خطای ارتباط با سرور ({exc.status_code}): {exc.message}")
+        return
+    if not me:
+        await message.answer("حساب تلگرام شما در فهرست مدیران فعال نیست. شناسه تلگرام خود را به مدیر اصلی بدهید تا دسترسی‌تان بررسی شود.")
         return
     await message.answer(f"سلام {me['display_name']} 👋", reply_markup=kb.menu_for(me["role"]))
 
