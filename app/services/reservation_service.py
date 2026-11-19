@@ -408,8 +408,16 @@ async def approve_customer_cancellation(
     )
     await _audit(session, actor_telegram_id, "reservation.cancellation_approved",
                  "reservation", public_code, {"refund": refund})
+    if reservation.created_by_telegram_id:
+        from app.services.notification_service import enqueue
+        await enqueue(
+            session,
+            telegram_user_id=reservation.created_by_telegram_id,
+            kind="cancellation_approved",
+            text="درخواست لغو شما تأیید شد و مبلغ پرداختی، پس از کسر هزینه کنسلی، حداکثر تا ۴۸ ساعت کاری به شما بازگردانده خواهد شد. 🌷",
+        )
     await session.flush()
-    return refund, reservation.created_by_telegram_id
+    return refund
 
 
 async def auto_reject_unpaid(session: AsyncSession, *, now: datetime) -> list[str]:
