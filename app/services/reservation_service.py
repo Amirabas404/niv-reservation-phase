@@ -4,10 +4,9 @@ import secrets
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, insert, literal, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import DateTime
 
 from app.core.phone import normalize_phone
 from app.core.timezone import ensure_aware, to_local
@@ -322,11 +321,7 @@ async def confirm_reservation(
                     insert(TableBooking).values(
                         table_id=t.id,
                         reservation_id=reservation.id,
-                        booking_range=func.tstzrange(
-                            literal(reservation.booking_start, DateTime(timezone=True)),
-                            literal(reservation.booking_end, DateTime(timezone=True)),
-                            literal("[)"),
-                        ),
+                        booking_range=func.tstzrange(reservation.booking_start, reservation.booking_end, "[)"),
                         kind="reservation",
                         is_active=True,
                     )
