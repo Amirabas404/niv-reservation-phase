@@ -69,7 +69,10 @@ async def pending(message: Message, backend: AdminBackend) -> None:
     for item in items:
         await message.answer(
             describe_reservation(item, show_amounts=can_manage),
-            reply_markup=kb.request_actions(item["public_code"], item["status"], item["design"] != "none", can_manage),
+            reply_markup=kb.request_actions(
+                item["public_code"], item["status"], item["design"] != "none", can_manage,
+                item.get("payment_status") == "verified",
+            ),
         )
 
 
@@ -197,7 +200,10 @@ async def payments(message: Message, backend: AdminBackend) -> None:
         return
     for item in items:
         await message.answer(describe_reservation(item, True),
-                             reply_markup=kb.request_actions(item["public_code"], item["status"], True, True))
+                             reply_markup=kb.request_actions(
+                                 item["public_code"], item["status"], True, True,
+                                 item.get("payment_status") == "verified",
+                             ))
 
 
 @router.callback_query(F.data.startswith("rc:"))
@@ -209,6 +215,27 @@ async def show_receipt(cb: CallbackQuery, backend: AdminBackend) -> None:
         await cb.answer(exc.message, show_alert=True)
         return
     await cb.message.answer_photo(BufferedInputFile(data, filename=f"{code}.jpg"), caption=f"رسید {code}")
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("assign:"))
+async def resume_table_assignment(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
+    code = cb.data.split(":", 1)[1]
+    items = await backend.reservations(cb.from_user.id, ["receipt_submitted"])
+    item = next((i for i in items if i["public_code"] == code), None)
+    if item is None or item.get("payment_status") != "verified":
+        await cb.answer("پرداخت تأییدشده‌ای برای تخصیص میز پیدا نشد.", show_alert=True)
+        return
+    tables = await backend.tables(cb.from_user.id, item["space_code"], code)
+    if not tables:
+        await cb.answer("هنوز میز آزاد و قابل استفاده‌ای وجود ندارد.", show_alert=True)
+        return
+    await state.set_state(ConfirmFlow.picking)
+    await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
+    await cb.message.answer(
+        f"میزهای آزاد رزرو {code} را انتخاب کنید. تعداد نفرات: {item['party_size']}",
+        reply_markup=kb.tables_picker(tables, set()),
+    )
     await cb.answer()
 
 
