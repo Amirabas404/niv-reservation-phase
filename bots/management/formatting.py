@@ -11,6 +11,7 @@ STATUS_LABELS = {
     "confirmed": "تأیید شده",
     "rejected": "رد شده",
     "rejected_unpaid": "رد (عدم پرداخت)",
+    "cancellation_requested": "درخواست لغو · منتظر تأیید مدیر",
     "cancelled": "لغو شده",
 }
 
