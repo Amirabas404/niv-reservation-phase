@@ -65,6 +65,20 @@ async def confirm(
     return {"public_code": r.public_code, "status": r.status}
 
 
+@router.post("/reservations/{public_code}/cancellation/approve")
+async def approve_cancellation(
+    public_code: str,
+    ctx: admin.AdminContext = Depends(admin_context),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    admin.require(ctx, admin.Permission.CONFIRM_RESERVATION)
+    refund, telegram_user_id = await svc.approve_customer_cancellation(
+        session, public_code=public_code, actor_telegram_id=ctx.telegram_user_id
+    )
+    await session.commit()
+    return {"refund_amount": refund, "telegram_user_id": telegram_user_id}
+
+
 @router.post("/reservations/{public_code}/reject", status_code=204)
 async def reject(
     public_code: str,
