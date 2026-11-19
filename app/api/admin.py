@@ -212,7 +212,7 @@ async def manager_notification_delivered(
                 notification_id=notification_id,
                 telegram_user_id=telegram_user_id,
             ))
-        team_ids = set((await admin.list_team(session, ctx)) if hasattr(admin, "list_team") else [])
+        team_ids = {member["telegram_user_id"] for member in await admin.list_team(session, ctx)}
         await session.flush()
         deliveries = (await session.execute(
             select(ManagerNotificationDelivery.telegram_user_id).where(
