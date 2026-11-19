@@ -84,9 +84,12 @@ class TicketNotifier:
         if not team:
             return
         for event in events:
-            delivered = True
+            delivered_to = set(event.get("delivered_to", []))
             for member in team:
-                ok = await self._send(member["telegram_user_id"], event["text"])
-                delivered = delivered and ok
-            if delivered:
-                await self._backend.manager_notification_delivered(self._actor, event["id"])
+                recipient = member["telegram_user_id"]
+                if recipient in delivered_to:
+                    continue
+                if await self._send(recipient, event["text"]):
+                    await self._backend.manager_notification_delivered(
+                        self._actor, event["id"], recipient
+                    )
