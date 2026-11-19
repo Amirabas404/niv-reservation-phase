@@ -386,7 +386,7 @@ async def confirm_reservation(
             "",
             "کافه‌رستوران NIV ❤️",
         ])
-        invoice_text = "\\n".join(invoice_lines).translate(digits)
+        invoice_text = "\n".join(invoice_lines).translate(digits)
         await enqueue(
             session,
             telegram_user_id=reservation.created_by_telegram_id,
