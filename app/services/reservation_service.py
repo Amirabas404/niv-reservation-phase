@@ -398,16 +398,22 @@ async def cancel_by_customer(
     space = await session.get(Space, reservation.space_id)
     booking_local = to_local(reservation.booking_start)
     notice = (
-        "🚨 درخواست لغو رزرو توسط مشتری\\n\\n"
-        f"کد پیگیری: {reservation.public_code}\\n"
-        f"نام مشتری: {customer.full_name if customer else '—'}\\n"
-        f"شماره تماس: {customer.phone if customer else '—'}\\n"
-        f"فضا: {space.name if space else '—'}\\n"
-        f"زمان رزرو: {booking_local:%Y-%m-%d %H:%M}\\n"
-        f"تعداد نفرات: {reservation.party_size}\\n"
-        f"مبلغ کل: {reservation.total_amount:,} تومان\\n"
-        f"مبلغ قابل استرداد: {refund:,} تومان\\n\\n"
-        "وضعیت رزرو در سامانه: لغو شده"
+        "🚨 درخواست لغو رزرو توسط مشتری\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📌 اطلاعات رزرو\n"
+        f"کد پیگیری: {reservation.public_code}\n"
+        f"فضا: {space.name if space else '—'}\n"
+        f"زمان رزرو: {booking_local:%Y-%m-%d %H:%M}\n"
+        f"تعداد نفرات: {reservation.party_size}\n"
+        "\n"
+        "👤 اطلاعات مشتری\n"
+        f"نام: {customer.full_name if customer else '—'}\n"
+        f"شماره تماس: {customer.phone if customer else '—'}\n"
+        "\n"
+        "💰 اطلاعات مالی\n"
+        f"مبلغ کل: {reservation.total_amount:,} تومان\n"
+        f"مبلغ قابل استرداد: {refund:,} تومان\n"
+        "━━━━━━━━━━━━━━━━━━"
     )
     session.add(ManagerNotification(text=notice))
     await _audit(
