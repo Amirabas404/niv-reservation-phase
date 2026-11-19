@@ -367,11 +367,7 @@ async def cancel_by_customer(
     now: datetime,
     telegram_user_id: int | None = None,
 ) -> int:
-    """Self-service cancellation up to the cutoff. Returns the refund amount (Toman).
-
-    Refund = refund_percent of the VERIFIED amount only. Unverified payments are not refunded.
-    Actual bank transfer is manual and recorded by staff.
-    """
+    """Register a customer cancellation request; a manager must approve it."""
     rules = await load_rules(session)
     reservation = await _get_reservation_for_update(session, public_code)
     if reservation.status not in _CANCELLABLE:
@@ -391,7 +387,7 @@ async def cancel_by_customer(
 
 async def approve_customer_cancellation(
     session: AsyncSession, *, public_code: str, actor_telegram_id: int
-) -> tuple[int, int | None]:
+) -> int:
     reservation = await _get_reservation_for_update(session, public_code)
     if reservation.status != ReservationStatus.CANCELLATION_REQUESTED.value:
         raise DomainError("درخواست لغو این رزرو در انتظار تأیید نیست.")
@@ -414,7 +410,11 @@ async def approve_customer_cancellation(
             session,
             telegram_user_id=reservation.created_by_telegram_id,
             kind="cancellation_approved",
-            text="درخواست لغو شما تأیید شد و مبلغ پرداختی، پس از کسر هزینه کنسلی، حداکثر تا ۴۸ ساعت کاری به شما بازگردانده خواهد شد. 🌷",
+            text=(
+                "درخواست لغو شما تأیید شد و مبلغ پرداختی، پس از کسر هزینه کنسلی، حداکثر تا ۴۸ ساعت کاری به شما بازگردانده خواهد شد. 🌷"
+                if refund > 0
+                else "درخواست لغو شما تأیید شد. با توجه به وضعیت پرداخت، مبلغی برای استرداد ثبت نشده است. 🌷"
+            ),
         )
     await session.flush()
     return refund
