@@ -41,6 +41,8 @@ def request_actions(code: str, status: str, is_design: bool, can_manage: bool) -
     if not can_manage:
         return None
     rows: list[list[IB]] = []
+    if status == "cancellation_requested":
+        rows.append([IB(text="تأیید لغو رزرو", callback_data=f"cancelok:{code}")])
     if status == "pending_manager_approval":
         rows.append([IB(text="تأیید و تخصیص میز", callback_data=f"ok:{code}"),
                      IB(text="رد", callback_data=f"no:{code}")])
