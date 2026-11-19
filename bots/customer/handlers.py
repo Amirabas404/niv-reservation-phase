@@ -413,11 +413,10 @@ async def cancel_request(cb: CallbackQuery, backend: BackendClient) -> None:
         if exc.support_offer:
             await cb.message.answer("برای لغو، با پشتیبانی هماهنگ کنید.", reply_markup=kb.support_offer_kb())
         return
-    refund = result.get("refund_amount", 0)
-    text = f"رزرو {code} لغو شد."
-    if refund:
-        text += f"\nمبلغ بازگشتی (۵۰٪): {money(refund)} — پس از بررسی مجموعه واریز می‌شود."
-    await _edit_or_answer(cb, text)
+    await _edit_or_answer(
+        cb,
+        f"درخواست لغو رزرو {code} برای بررسی به مجموعه ارسال شد. پس از تأیید مدیر، نتیجه برای شما ارسال می‌شود.",
+    )
 
 
 @router.callback_query(F.data.startswith("rc:"))
