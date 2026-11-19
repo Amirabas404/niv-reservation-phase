@@ -99,3 +99,9 @@ class AdminBackend:
 
     async def monthly_excel(self, actor: int, ym: str) -> bytes:
         return await self._request(actor, "GET", "/admin/reports/monthly.xlsx", params={"ym": ym})
+
+    async def manager_notifications(self, actor: int) -> list[dict]:
+        return await self._request(actor, "GET", "/admin/manager-notifications")
+
+    async def manager_notification_delivered(self, actor: int, notification_id: int) -> None:
+        await self._request(actor, "POST", f"/admin/manager-notifications/{notification_id}/delivered")
