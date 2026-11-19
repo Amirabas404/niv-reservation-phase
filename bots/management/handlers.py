@@ -42,9 +42,19 @@ async def _need_manager(message: Message, backend: AdminBackend) -> dict | None:
 
 @router.message(CommandStart())
 async def start(message: Message, backend: AdminBackend) -> None:
-    me = await _me(message, backend)
-    if not me:
-        await message.answer("شما به این ربات دسترسی ندارید.")
+    try:
+        me = await backend.me(message.from_user.id)
+    except AdminBackendError as exc:
+        if exc.status_code in (401, 403):
+            await message.answer(
+                "حساب تلگرام شما در فهرست مدیران فعال ثبت نشده است. "
+                "شناسه تلگرام شما باید در بخش مدیران سامانه ثبت و فعال باشد."
+            )
+        else:
+            await message.answer(
+                f"ارتباط با سرور مدیریت برقرار نشد (خطای {exc.status_code}). "
+                f"جزئیات: {exc.message}"
+            )
         return
     await message.answer(f"سلام {me['display_name']} 👋", reply_markup=kb.menu_for(me["role"]))
 
