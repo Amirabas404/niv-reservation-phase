@@ -2,9 +2,8 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update, literal
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import DateTime
 
 from app.domain.errors import NotFoundError, PermissionDeniedError, SettingsVersionConflictError
 from app.domain.permissions import Permission, Role, has_permission, redact_amounts
@@ -128,11 +127,7 @@ async def list_tables(
                 select(TableBooking.table_id).where(
                     TableBooking.is_active.is_(True),
                     TableBooking.booking_range.op("&&")(
-                        func.tstzrange(
-                            literal(reservation.booking_start, DateTime(timezone=True)),
-                            literal(reservation.booking_end, DateTime(timezone=True)),
-                            literal("[)"),
-                        )
+                        func.tstzrange(reservation.booking_start, reservation.booking_end, "[)")
                     ),
                 )
             )).scalars().all()
