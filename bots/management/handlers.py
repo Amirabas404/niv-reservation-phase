@@ -211,7 +211,13 @@ async def verify_payment(cb: CallbackQuery, backend: AdminBackend) -> None:
     except AdminBackendError as exc:
         await cb.answer(exc.message, show_alert=True)
         return
-    await cb.message.answer(f"پرداخت {code} تأیید شد ✅ حالا می‌توانید میز تخصیص دهید.")
+    tables = await backend.tables(cb.from_user.id, item["space_code"])
+    await state.set_state(ConfirmFlow.picking)
+    await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
+    await cb.message.answer(
+        f"پرداخت {code} تأیید شد ✅\nاکنون میز(های) رزرو را انتخاب کنید.\nتعداد نفرات: {item['party_size']}",
+        reply_markup=kb.tables_picker(tables, set()),
+    )
     await cb.answer()
 
 
