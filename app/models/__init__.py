@@ -3,6 +3,7 @@ from app.models.audit_log import AuditLog
 from app.models.branch import Branch
 from app.models.customer import Customer
 from app.models.ops import DailyReport, JobRun, Notification
+from app.models.manager_notification import ManagerNotification
 from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.space import Space
@@ -19,6 +20,7 @@ __all__ = [
     "DailyReport",
     "JobRun",
     "Notification",
+    "ManagerNotification",
     "Payment",
     "Reservation",
     "Space",
