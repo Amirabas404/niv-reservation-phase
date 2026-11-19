@@ -343,6 +343,57 @@ async def confirm_reservation(
         public_code,
         {"table_ids": unique_ids},
     )
+
+    if reservation.created_by_telegram_id:
+        from app.domain.pricing import DESIGN_LABELS, SPACE_LABELS
+        from app.core.timezone import to_jalali_str
+        from app.services.notification_service import enqueue
+
+        customer_name, customer_phone, space_name = (
+            await session.execute(
+                select(Customer.full_name, Customer.phone, Space.name)
+                .join(Customer, Customer.id == reservation.customer_id)
+                .join(Space, Space.id == reservation.space_id)
+            )
+        ).one()
+        snapshot_items = reservation.price_snapshot.get("items", [])
+        digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+        invoice_lines = [
+            "🧾 فاکتور نهایی رزرو NIV",
+            "━━━━━━━━━━━━━━",
+            f"کد پیگیری: {reservation.public_code}",
+            f"نام مشتری: {customer_name}",
+            f"شماره تماس: {customer_phone}",
+            f"تاریخ و ساعت: {to_jalali_str(reservation.booking_start)}",
+            f"فضا: {SPACE_LABELS.get(reservation.design and reservation.space_id, space_name) if False else space_name}",
+            f"تعداد نفرات: {reservation.party_size}",
+        ]
+        if reservation.design != DesignCode.NONE.value:
+            invoice_lines.append(f"دیزاین: {DESIGN_LABELS.get(DesignCode(reservation.design), reservation.design)}")
+        else:
+            invoice_lines.append("دیزاین: بدون دیزاین")
+        invoice_lines.append(f"کیک: {'بله' if reservation.with_cake else 'خیر'}")
+        invoice_lines.extend(["", "جزئیات فاکتور:"])
+        for line in snapshot_items:
+            invoice_lines.append(f"• {line.get('label', 'مورد رزرو')}: {line.get('total', 0):,} تومان")
+        invoice_lines.extend([
+            "",
+            f"مبلغ نهایی: {reservation.total_amount:,} تومان",
+            f"میز(ها): {', '.join(str(t.number) for t in tables)}",
+            "",
+            "وضعیت: رزرو شما با موفقیت تأیید و نهایی شد ✅",
+            "در صورت نیاز به هرگونه تغییر در رزرو، لطفاً از طریق بخش پشتیبانی با ما در ارتباط باشید.",
+            "",
+            "کافه‌رستوران NIV ❤️",
+        ])
+        invoice_text = "\\n".join(invoice_lines).translate(digits)
+        await enqueue(
+            session,
+            telegram_user_id=reservation.created_by_telegram_id,
+            kind="reservation_confirmed_invoice",
+            text=invoice_text,
+        )
+
     await session.flush()
     return reservation
 
