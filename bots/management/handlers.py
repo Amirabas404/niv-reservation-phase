@@ -263,7 +263,7 @@ async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBac
     await state.set_state(ConfirmFlow.picking)
     await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
     await cb.message.answer(
-        f"پرداخت {code} تأیید شد ✅\\nاکنون فقط از میان میزهای آزاد انتخاب کنید.\\nتعداد نفرات: {item['party_size']}",
+        f"پرداخت {code} تأیید شد ✅\\nاکنون فقط از میان میزهای آزاد انتخاب کنید.\nتعداد نفرات: {item['party_size']}",
         reply_markup=kb.tables_picker(tables, set()),
     )
     await cb.answer()
