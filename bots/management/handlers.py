@@ -99,15 +99,15 @@ async def confirm_start(cb: CallbackQuery, state: FSMContext, backend: AdminBack
     tables = await backend.tables(cb.from_user.id, item["space_code"], code)
     if not tables:
         await cb.message.answer(
-            f"برای رزرو {code} در این بازه زمانی میز آزاد و قابل استفاده‌ای وجود ندارد. "
-            "ظرفیت و وضعیت میزها را از بخش «میزها» بررسی کنید."
+            f"برای رزرو {code} میزی با وضعیت فعال و ظرفیت تنظیم‌شده پیدا نشد. "
+            "لطفاً فهرست میزها را از بخش «میزها» بررسی کنید."
         )
         await cb.answer()
         return
     await state.set_state(ConfirmFlow.picking)
     await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
     await cb.message.answer(
-        f"میز(های) آزاد {code} را انتخاب کنید (عدد داخل پرانتز ظرفیت است).\n"
+        f"میز(های) موردنظر برای رزرو {code} را انتخاب کنید (عدد داخل پرانتز ظرفیت است).\n"
         f"تعداد نفرات: {item['party_size']}",
         reply_markup=kb.tables_picker(tables, set()),
     )
@@ -125,7 +125,7 @@ async def toggle_table(cb: CallbackQuery, state: FSMContext, backend: AdminBacke
         selected.discard(table_id)
         await state.update_data(selected=sorted(selected))
         await cb.message.edit_reply_markup(reply_markup=kb.tables_picker(tables, selected))
-        await cb.answer("این میز دیگر آزاد نیست؛ فهرست به‌روزرسانی شد.", show_alert=True)
+        await cb.answer("وضعیت این میز تغییر کرده یا قابل انتخاب نیست؛ فهرست به‌روزرسانی شد.", show_alert=True)
         return
     selected.symmetric_difference_update({table_id})
     await state.update_data(selected=sorted(selected))
@@ -152,7 +152,7 @@ async def confirm_done(cb: CallbackQuery, state: FSMContext, backend: AdminBacke
                     reply_markup=kb.tables_picker(tables, set(refreshed))
                 )
                 await cb.answer(
-                    "وضعیت میزها تغییر کرده بود؛ فهرست آزاد به‌روزرسانی شد. دوباره انتخاب کنید.",
+                    "وضعیت میزها تغییر کرده بود؛ فهرست به‌روزرسانی شد. دوباره انتخاب کنید.",
                     show_alert=True,
                 )
                 return
@@ -271,8 +271,8 @@ async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBac
     tables = await backend.tables(cb.from_user.id, item["space_code"], code)
     if not tables:
         await cb.message.answer(
-            f"پرداخت {code} تأیید شد ✅ اما برای این بازه زمانی میز آزاد و قابل استفاده‌ای وجود ندارد. "
-            "ظرفیت و وضعیت میزها را بررسی کنید."
+            f"پرداخت {code} تأیید شد ✅ اما میز فعالی با ظرفیت تنظیم‌شده برای انتخاب پیدا نشد. "
+            "لطفاً بخش «میزها» را بررسی کنید."
         )
         await cb.answer()
         return
