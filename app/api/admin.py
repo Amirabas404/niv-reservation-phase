@@ -1,7 +1,4 @@
 import secrets
-from datetime import UTC, datetime
-
-from sqlalchemy import select
 
 from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +17,6 @@ from app.schemas.admin import (
     SettingUpdate,
     TableUpdate,
 )
-from app.models import ManagerNotification, ManagerNotificationDelivery
 from app.services import admin_service as admin
 from app.services import reservation_service as svc
 
@@ -164,62 +160,3 @@ async def put_setting(
     result = await admin.update_setting(session, ctx, key, body.value, body.expected_version)
     await session.commit()
     return result
-
-
-@router.get("/manager-notifications")
-async def manager_notifications(
-    ctx: admin.AdminContext = Depends(admin_context),
-    session: AsyncSession = Depends(get_session),
-) -> list[dict]:
-    rows = (await session.execute(
-        select(ManagerNotification)
-        .where(ManagerNotification.delivered_at.is_(None))
-        .order_by(ManagerNotification.id)
-        .limit(50)
-    )).scalars().all()
-    if not rows:
-        return []
-    delivery_rows = (await session.execute(
-        select(ManagerNotificationDelivery.notification_id, ManagerNotificationDelivery.telegram_user_id)
-        .where(ManagerNotificationDelivery.notification_id.in_([row.id for row in rows]))
-    )).all()
-    delivered = {}
-    for notification_id, telegram_user_id in delivery_rows:
-        delivered.setdefault(notification_id, []).append(telegram_user_id)
-    return [
-        {"id": row.id, "text": row.text, "delivered_to": delivered.get(row.id, [])}
-        for row in rows
-    ]
-
-
-@router.post("/manager-notifications/{notification_id}/delivered", status_code=204)
-async def manager_notification_delivered(
-    notification_id: int,
-    telegram_user_id: int,
-    ctx: admin.AdminContext = Depends(admin_context),
-    session: AsyncSession = Depends(get_session),
-) -> Response:
-    item = await session.get(ManagerNotification, notification_id)
-    if item is not None:
-        existing = (await session.execute(
-            select(ManagerNotificationDelivery).where(
-                ManagerNotificationDelivery.notification_id == notification_id,
-                ManagerNotificationDelivery.telegram_user_id == telegram_user_id,
-            )
-        )).scalar_one_or_none()
-        if existing is None:
-            session.add(ManagerNotificationDelivery(
-                notification_id=notification_id,
-                telegram_user_id=telegram_user_id,
-            ))
-        team_ids = {member["telegram_user_id"] for member in await admin.list_team(session, ctx)}
-        await session.flush()
-        deliveries = (await session.execute(
-            select(ManagerNotificationDelivery.telegram_user_id).where(
-                ManagerNotificationDelivery.notification_id == notification_id
-            )
-        )).scalars().all()
-        if team_ids and team_ids.issubset(set(deliveries)):
-            item.delivered_at = datetime.now(UTC)
-        await session.commit()
-    return Response(status_code=204)
