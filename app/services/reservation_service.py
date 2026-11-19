@@ -381,29 +381,35 @@ async def cancel_by_customer(
             f"لغو کمتر از {rules.cancellation_cutoff_hours} ساعت قبل از رزرو از طریق پشتیبانی انجام می‌شود."
         )
 
-    refund = 0
+    assert_transition(reservation.status, ReservationStatus.CANCELLATION_REQUESTED)
+    reservation.status = ReservationStatus.CANCELLATION_REQUESTED.value
+    await _audit(session, telegram_user_id, "reservation.cancellation_requested",
+                 "reservation", public_code, {})
+    await session.flush()
+    return 0
+
+
+async def approve_customer_cancellation(
+    session: AsyncSession, *, public_code: str, actor_telegram_id: int
+) -> tuple[int, int | None]:
+    reservation = await _get_reservation_for_update(session, public_code)
+    if reservation.status != ReservationStatus.CANCELLATION_REQUESTED.value:
+        raise DomainError("درخواست لغو این رزرو در انتظار تأیید نیست.")
+    rules = await load_rules(session)
     payment = await _get_payment(session, reservation.id, for_update=True)
+    refund = 0
     if payment is not None and payment.status == PaymentStatus.VERIFIED.value:
         refund = refund_amount(payment.amount_verified or 0, rules.refund_percent)
         payment.refund_amount = refund
-
     assert_transition(reservation.status, ReservationStatus.CANCELLED)
     reservation.status = ReservationStatus.CANCELLED.value
     await session.execute(
-        update(TableBooking)
-        .where(TableBooking.reservation_id == reservation.id)
-        .values(is_active=False)
+        update(TableBooking).where(TableBooking.reservation_id == reservation.id).values(is_active=False)
     )
-    await _audit(
-        session,
-        telegram_user_id,
-        "reservation.cancelled",
-        "reservation",
-        public_code,
-        {"refund": refund},
-    )
+    await _audit(session, actor_telegram_id, "reservation.cancellation_approved",
+                 "reservation", public_code, {"refund": refund})
     await session.flush()
-    return refund
+    return refund, reservation.created_by_telegram_id
 
 
 async def auto_reject_unpaid(session: AsyncSession, *, now: datetime) -> list[str]:
