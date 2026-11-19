@@ -119,20 +119,8 @@ async def list_tables(
         )
 
     rows = (await session.execute(stmt.order_by(Space.id, Table.id))).all()
-    busy_ids: set[int] = set()
-    if reservation is not None and rows:
-        from sqlalchemy import func
-        busy_ids = set(
-            (await session.execute(
-                select(TableBooking.table_id).where(
-                    TableBooking.is_active.is_(True),
-                    TableBooking.booking_range.op("&&")(
-                        func.tstzrange(reservation.booking_start, reservation.booking_end, "[)")
-                    ),
-                )
-            )).scalars().all()
-        )
-
+    # Deliberately do not filter tables by existing time overlaps here.
+    # The manager reviews conflicts and makes the final assignment decision.
     return [
         {
             "id": t.id,
@@ -144,7 +132,6 @@ async def list_tables(
             "space_name": name,
         }
         for t, code, name in rows
-        if reservation is None or t.id not in busy_ids
     ]
 
 async def update_table(
