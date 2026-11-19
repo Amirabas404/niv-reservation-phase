@@ -62,8 +62,14 @@ class AdminBackend:
     async def receipt(self, actor: int, code: str) -> bytes:
         return await self._request(actor, "GET", f"/admin/reservations/{code}/receipt")
 
-    async def tables(self, actor: int, space_code: str | None = None) -> list[dict]:
-        params = {"space_code": space_code} if space_code else {}
+    async def tables(
+        self, actor: int, space_code: str | None = None, public_code: str | None = None
+    ) -> list[dict]:
+        params = {}
+        if space_code:
+            params["space_code"] = space_code
+        if public_code:
+            params["public_code"] = public_code
         return await self._request(actor, "GET", "/admin/tables", params=params)
 
     async def update_table(self, actor: int, table_id: int, **fields: Any) -> None:
