@@ -103,5 +103,8 @@ class AdminBackend:
     async def manager_notifications(self, actor: int) -> list[dict]:
         return await self._request(actor, "GET", "/admin/manager-notifications")
 
-    async def manager_notification_delivered(self, actor: int, notification_id: int) -> None:
-        await self._request(actor, "POST", f"/admin/manager-notifications/{notification_id}/delivered")
+    async def manager_notification_delivered(self, actor: int, notification_id: int, telegram_user_id: int) -> None:
+        await self._request(
+            actor, "POST", f"/admin/manager-notifications/{notification_id}/delivered",
+            params={"telegram_user_id": telegram_user_id},
+        )
