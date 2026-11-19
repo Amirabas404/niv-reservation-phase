@@ -87,12 +87,52 @@ async def receipt_key(session: AsyncSession, ctx: AdminContext, public_code: str
     return row
 
 
-async def list_tables(session: AsyncSession, ctx: AdminContext, space_code: str | None) -> list[dict]:
+async def list_tables(
+    session: AsyncSession,
+    ctx: AdminContext,
+    space_code: str | None,
+    public_code: str | None = None,
+) -> list[dict]:
+    """List tables; when a reservation is supplied, return only usable, free tables."""
     require(ctx, Permission.MANAGE_TABLES)
-    stmt = select(Table, Space.code, Space.name).join(Space, Space.id == Table.space_id).order_by(Space.id, Table.id)
+    stmt = select(Table, Space.code, Space.name).join(Space, Space.id == Table.space_id)
     if space_code:
         stmt = stmt.where(Space.code == space_code)
-    rows = (await session.execute(stmt)).all()
+
+    reservation = None
+    if public_code:
+        reservation = (
+            await session.execute(
+                select(Reservation).where(
+                    Reservation.public_code == public_code,
+                    Reservation.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if reservation is None:
+            raise NotFoundError("رزرو برای تخصیص میز یافت نشد.")
+        stmt = stmt.where(
+            Space.id == reservation.space_id,
+            Table.is_active.is_(True),
+            Table.is_blocked.is_(False),
+            Table.capacity.is_not(None),
+        )
+
+    rows = (await session.execute(stmt.order_by(Space.id, Table.id))).all()
+    busy_ids: set[int] = set()
+    if reservation is not None and rows:
+        from sqlalchemy import func
+        busy_ids = set(
+            (await session.execute(
+                select(TableBooking.table_id).where(
+                    TableBooking.is_active.is_(True),
+                    TableBooking.booking_range.op("&&")(
+                        func.tstzrange(reservation.booking_start, reservation.booking_end, "[)")
+                    ),
+                )
+            )).scalars().all()
+        )
+
     return [
         {
             "id": t.id,
@@ -104,8 +144,8 @@ async def list_tables(session: AsyncSession, ctx: AdminContext, space_code: str 
             "space_name": name,
         }
         for t, code, name in rows
+        if reservation is None or t.id not in busy_ids
     ]
-
 
 async def update_table(
     session: AsyncSession, ctx: AdminContext, table_id: int, capacity: int | None, is_blocked: bool | None
