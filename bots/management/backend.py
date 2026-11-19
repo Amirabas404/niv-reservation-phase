@@ -46,6 +46,9 @@ class AdminBackend:
     async def confirm(self, actor: int, code: str, table_ids: list[int]) -> None:
         await self._request(actor, "POST", f"/admin/reservations/{code}/confirm", json={"table_ids": table_ids})
 
+    async def approve_cancellation(self, actor: int, code: str) -> dict:
+        return await self._request(actor, "POST", f"/admin/reservations/{code}/cancellation/approve")
+
     async def reject(self, actor: int, code: str, reason: str) -> None:
         await self._request(actor, "POST", f"/admin/reservations/{code}/reject", json={"reason": reason})
 
