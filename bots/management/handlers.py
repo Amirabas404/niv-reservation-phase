@@ -20,7 +20,7 @@ from bots.management.states import BankCardFlow, CapacityFlow, ConfirmFlow, Pric
 log = logging.getLogger(__name__)
 router = Router(name="management")
 
-PENDING = ["pending_manager_approval", "receipt_submitted"]
+PENDING = ["pending_manager_approval", "receipt_submitted", "cancellation_requested"]
 SETTING_KEYS = ["pricing", "rules", "bank_card"]
 
 
@@ -71,6 +71,27 @@ async def pending(message: Message, backend: AdminBackend) -> None:
             describe_reservation(item, show_amounts=can_manage),
             reply_markup=kb.request_actions(item["public_code"], item["status"], item["design"] != "none", can_manage),
         )
+
+
+@router.callback_query(F.data.startswith("cancelok:"))
+async def approve_cancellation(cb: CallbackQuery, backend: AdminBackend) -> None:
+    code = cb.data.split(":", 1)[1]
+    try:
+        result = await backend.approve_cancellation(cb.from_user.id, code)
+    except AdminBackendError as exc:
+        await cb.answer(exc.message, show_alert=True)
+        return
+    customer_id = result.get("telegram_user_id")
+    if customer_id:
+        try:
+            await cb.bot.send_message(
+                customer_id,
+                "درخواست لغو شما تأیید شد و مبلغ پرداختی، پس از کسر هزینه کنسلی، حداکثر تا ۴۸ ساعت کاری به شما بازگردانده خواهد شد. 🌷",
+            )
+        except Exception:
+            log.exception("Could not send cancellation approval notice for %s", code)
+    await cb.message.answer(f"درخواست لغو رزرو {code} تأیید شد. مبلغ قابل استرداد: {fa(result.get('refund_amount', 0))} تومان")
+    await cb.answer("درخواست لغو تأیید شد ✅")
 
 
 @router.callback_query(F.data.startswith("ok:"))
