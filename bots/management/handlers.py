@@ -142,6 +142,22 @@ async def confirm_done(cb: CallbackQuery, state: FSMContext, backend: AdminBacke
     try:
         await backend.confirm(cb.from_user.id, data["code"], data["selected"])
     except AdminBackendError as exc:
+        try:
+            tables = await backend.tables(cb.from_user.id, data["space"], data["code"])
+            available_ids = {t["id"] for t in tables}
+            refreshed = sorted(set(data["selected"]) & available_ids)
+            if refreshed != sorted(data["selected"]):
+                await state.update_data(selected=refreshed)
+                await cb.message.edit_reply_markup(
+                    reply_markup=kb.tables_picker(tables, set(refreshed))
+                )
+                await cb.answer(
+                    "وضعیت میزها تغییر کرده بود؛ فهرست آزاد به‌روزرسانی شد. دوباره انتخاب کنید.",
+                    show_alert=True,
+                )
+                return
+        except AdminBackendError:
+            pass
         await cb.answer(exc.message, show_alert=True)
         return
     await state.clear()
