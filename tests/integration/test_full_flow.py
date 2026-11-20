@@ -73,7 +73,8 @@ async def test_cancel_paid_design_refunds_half(session):
     await svc.verify_payment(session, public_code=r.public_code, amount_verified=payment.amount_expected,
                              now=NOW, actor_telegram_id=100)
     await session.commit()
-    refund = await svc.cancel_by_customer(session, public_code=r.public_code, now=NOW)
+    await svc.cancel_by_customer(session, public_code=r.public_code, now=NOW)
+    refund = await svc.approve_customer_cancellation(session, public_code=r.public_code, actor_telegram_id=100)
     await session.commit()
     assert refund == payment.amount_expected // 2
 
