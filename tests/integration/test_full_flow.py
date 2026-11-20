@@ -12,7 +12,7 @@ from app.domain.errors import (
 )
 from app.domain.permissions import Permission, Role
 from app.domain.statuses import ReservationStatus
-from app.models import Payment, Reservation, Table
+from app.models import Notification, Payment, Reservation
 from app.services import admin_service as admin
 from app.services import reservation_service as svc
 from app.services import support_service as support
@@ -30,25 +30,20 @@ MANAGER = AdminContext(telegram_user_id=100, role=Role.MANAGER, display_name="م
 SUPPORT = AdminContext(telegram_user_id=200, role=Role.SUPPORT, display_name="پشتیبان")
 
 
-async def _table(session, number: str) -> Table:
-    t = (await session.execute(select(Table).where(Table.number == number))).scalar_one()
-    t.capacity = 6
-    await session.commit()
-    return t
-
-
-async def test_plain_reservation_flow_confirms_with_table(session):
+async def test_plain_reservation_flow_confirms_without_table_assignment(session):
     r = await svc.create_reservation(session, now=NOW, customer_name="علی", phone="09120000010",
                                      space_code="hall", party_size=4, booking_start=START,
                                      telegram_user_id=5001)
     assert r.status == ReservationStatus.PENDING_MANAGER.value
-    table = await _table(session, "3")
-    await svc.confirm_reservation(session, public_code=r.public_code, table_ids=[table.id], actor_telegram_id=100)
+    await svc.confirm_reservation(session, public_code=r.public_code, table_ids=[], actor_telegram_id=100)
     await session.commit()
     assert (await session.get(Reservation, r.id)).status == ReservationStatus.CONFIRMED.value
+    notice = (await session.execute(select(Notification).where(Notification.customer_telegram_id == 5001))).scalar_one()
+    assert "رزرو شما با موفقیت تأیید" in notice.text
+    assert "میز(ها)" not in notice.text
 
 
-async def test_design_flow_receipt_verify_confirm(session):
+async def test_design_flow_receipt_verify_confirms_automatically(session):
     r = await svc.create_reservation(session, now=NOW, customer_name="سارا", phone="09120000011",
                                      space_code="roof_family", party_size=2, booking_start=LATER,
                                      design="both", telegram_user_id=5002)
@@ -62,10 +57,10 @@ async def test_design_flow_receipt_verify_confirm(session):
                                  actor_telegram_id=100)
     await svc.verify_payment(session, public_code=r.public_code, amount_verified=payment.amount_expected,
                              now=NOW, actor_telegram_id=100)
-    table = await _table(session, "14")
-    await svc.confirm_reservation(session, public_code=r.public_code, table_ids=[table.id], actor_telegram_id=100)
     await session.commit()
     assert (await session.get(Reservation, r.id)).status == ReservationStatus.CONFIRMED.value
+    notice = (await session.execute(select(Notification).where(Notification.customer_telegram_id == 5002))).scalar_one()
+    assert "رزرو شما با موفقیت تأیید" in notice.text
 
 
 async def test_cancel_paid_design_refunds_half(session):
@@ -77,13 +72,22 @@ async def test_cancel_paid_design_refunds_half(session):
     payment = (await session.execute(select(Payment).where(Payment.reservation_id == r.id))).scalar_one()
     await svc.verify_payment(session, public_code=r.public_code, amount_verified=payment.amount_expected,
                              now=NOW, actor_telegram_id=100)
-    table = await _table(session, "15")
-    await svc.confirm_reservation(session, public_code=r.public_code, table_ids=[table.id], actor_telegram_id=100)
     await session.commit()
     refund = await svc.cancel_by_customer(session, public_code=r.public_code, now=NOW)
     await session.commit()
     assert refund == payment.amount_expected // 2
 
+
+
+
+async def test_rejected_reservation_notifies_customer(session):
+    r = await svc.create_reservation(session, now=NOW, customer_name="مینا", phone="09120000017",
+                                     space_code="hall", party_size=2, booking_start=START,
+                                     telegram_user_id=5017)
+    await svc.reject_reservation(session, public_code=r.public_code, reason="ظرفیت تکمیل است", actor_telegram_id=100)
+    await session.commit()
+    notice = (await session.execute(select(Notification).where(Notification.customer_telegram_id == 5017))).scalar_one()
+    assert "ظرفیت تکمیل است" in notice.text
 
 async def test_cancellation_inside_cutoff_needs_support(session):
     r = await svc.create_reservation(session, now=NOW, customer_name="زهرا", phone="09120000013",
