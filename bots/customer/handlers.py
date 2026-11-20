@@ -156,9 +156,18 @@ async def support_chat_text(message: Message, state: FSMContext, backend: Backen
         await backend.support_message(message.from_user.id, message.text)
     except BackendError as exc:
         if exc.code == "no_active_ticket":
-            await state.clear()
-            await message.answer("این گفتگو پایان یافته است. برای پیام جدید دوباره از منو پشتیبانی را انتخاب کنید.",
-                                 reply_markup=kb.main_menu())
+            # A staff member may have closed the previous ticket after replying.
+            # Start a fresh ticket and forward this message instead of falling through
+            # to the generic menu handler.
+            try:
+                await backend.open_support(message.from_user.id, "ادامه گفتگو با پشتیبانی")
+                await backend.support_message(message.from_user.id, message.text)
+            except BackendError as reopen_exc:
+                await message.answer(reopen_exc.message)
+                return
+            await state.set_state(SupportStates.chat)
+            await message.answer("گفتگوی جدید با پشتیبانی ثبت شد. پیام شما ارسال گردید 🌷",
+                                 reply_markup=kb.support_chat_kb())
             return
         await message.answer(exc.message)
 
@@ -239,7 +248,7 @@ async def enter_name(message: Message, state: FSMContext) -> None:
     await state.update_data(name=name)
     await state.set_state(BookingStates.phone)
     await message.answer(
-        "برای ثبت رزرو، شماره موبایل خود را از طریق دکمه زیر ارسال کنید.",
+        "لطفاً شماره موبایل خود را با +98 وارد فرمایید. در صورت تمایل می‌توانید از دکمه زیر برای ارسال شماره استفاده کنید.",
         reply_markup=kb.contact_request(),
     )
 
@@ -248,7 +257,7 @@ async def _accept_booking_phone(message: Message, state: FSMContext, backend: Ba
     try:
         phone = normalize_phone(raw_phone)
     except InvalidPhoneError as exc:
-        await message.answer(exc.message, reply_markup=kb.contact_request())
+        await message.answer(f"{exc.message}\nلطفاً شماره موبایل خود را با +98 وارد فرمایید.", reply_markup=kb.contact_request())
         return
 
     data = await state.get_data()
@@ -278,7 +287,7 @@ async def _accept_booking_phone(message: Message, state: FSMContext, backend: Ba
 @router.message(BookingStates.phone, F.contact)
 async def enter_phone(message: Message, state: FSMContext, backend: BackendClient) -> None:
     if message.contact.user_id not in (None, message.from_user.id):
-        await message.answer("لطفاً شماره خودتان را با دکمه ارسال شماره من بفرستید.")
+        await message.answer("لطفاً شماره موبایل خود را با +98 وارد فرمایید و شماره متعلق به خودتان را ارسال کنید.", reply_markup=kb.contact_request())
         return
     await _accept_booking_phone(message, state, backend, message.contact.phone_number)
 
@@ -349,7 +358,7 @@ async def status_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(StatusStates.phone)
     await message.answer(
-        "برای نمایش رزروهای شما، شماره موبایل خود را از طریق دکمه زیر ارسال کنید.",
+        "لطفاً شماره موبایل خود را با +98 وارد فرمایید. در صورت تمایل می‌توانید از دکمه زیر برای ارسال شماره استفاده کنید.",
         reply_markup=kb.contact_request(),
     )
 
@@ -393,7 +402,7 @@ async def _show_reservations(message: Message, state: FSMContext, backend: Backe
 @router.message(StatusStates.phone, F.contact)
 async def status_show(message: Message, state: FSMContext, backend: BackendClient) -> None:
     if message.contact.user_id not in (None, message.from_user.id):
-        await message.answer("لطفاً شماره خودتان را ارسال کنید.", reply_markup=kb.contact_request())
+        await message.answer("لطفاً شماره موبایل خود را با +98 وارد فرمایید و شماره متعلق به خودتان را ارسال کنید.", reply_markup=kb.contact_request())
         return
     await _show_reservations(message, state, backend, message.contact.phone_number)
 
