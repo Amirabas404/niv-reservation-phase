@@ -9,7 +9,8 @@ class AdminMe(BaseModel):
 
 
 class ConfirmByAdmin(BaseModel):
-    table_ids: list[int] = Field(min_length=1, max_length=10)
+    # Table assignment is temporarily disabled; keep the field for API compatibility.
+    table_ids: list[int] = Field(default_factory=list, max_length=10)
 
 
 class RejectByAdmin(BaseModel):
