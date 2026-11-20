@@ -4,13 +4,13 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import select
 
-from app.models import Table
+from app.models import Table, TableBooking
 from app.services.reservation_service import confirm_reservation, create_reservation
 
 UTC = ZoneInfo("UTC")
 
 
-async def test_manager_can_assign_same_table_despite_time_overlap(session):
+async def test_manager_confirmation_no_longer_requires_table_assignment(session):
     now = datetime(2026, 11, 9, 8, 0, tzinfo=UTC)
     start = datetime(2026, 11, 10, 10, 30, tzinfo=UTC)
     r1 = await create_reservation(session, now=now, customer_name="علی رضایی", phone="09120000001",
@@ -21,7 +21,9 @@ async def test_manager_can_assign_same_table_despite_time_overlap(session):
     table = (await session.execute(select(Table).where(Table.number == "2"))).scalar_one()
     table.capacity = 4
     await session.commit()
-    await confirm_reservation(session, public_code=r1.public_code, table_ids=[table.id], actor_telegram_id=1)
+    await confirm_reservation(session, public_code=r1.public_code, table_ids=[], actor_telegram_id=1)
     await session.commit()
-    await confirm_reservation(session, public_code=r2.public_code, table_ids=[table.id], actor_telegram_id=1)
+    await confirm_reservation(session, public_code=r2.public_code, table_ids=[], actor_telegram_id=1)
     await session.commit()
+    bookings = (await session.execute(select(TableBooking))).scalars().all()
+    assert bookings == []
