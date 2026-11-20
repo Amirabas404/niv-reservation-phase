@@ -328,7 +328,9 @@ async def _enqueue_confirmation_invoice(session: AsyncSession, reservation: Rese
         "کافه‌رستوران NIV ❤️",
     ])
     await enqueue(session, telegram_user_id=reservation.created_by_telegram_id,
-                   kind="reservation_confirmed_invoice", text="\n".join(invoice_lines).translate(digits))\n\nasync def confirm_reservation(
+                   kind="reservation_confirmed_invoice", text="\n".join(invoice_lines).translate(digits))
+
+async def confirm_reservation(
     session: AsyncSession,
     *,
     public_code: str,
