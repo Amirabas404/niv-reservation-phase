@@ -89,87 +89,17 @@ async def approve_cancellation(cb: CallbackQuery, backend: AdminBackend) -> None
 
 
 @router.callback_query(F.data.startswith("ok:"))
-async def confirm_start(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
+async def confirm_start(cb: CallbackQuery, backend: AdminBackend) -> None:
     code = cb.data.split(":", 1)[1]
-    items = await backend.reservations(cb.from_user.id, ["pending_manager_approval"])
-    item = next((i for i in items if i["public_code"] == code), None)
-    if item is None:
-        await cb.answer("این درخواست دیگر در انتظار نیست.", show_alert=True)
-        return
-    tables = await backend.tables(cb.from_user.id, item["space_code"], code)
-    if not tables:
-        await cb.message.answer(
-            f"برای رزرو {code} میزی با وضعیت فعال و ظرفیت تنظیم‌شده پیدا نشد. "
-            "لطفاً فهرست میزها را از بخش «میزها» بررسی کنید."
-        )
-        await cb.answer()
-        return
-    await state.set_state(ConfirmFlow.picking)
-    await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
-    await cb.message.answer(
-        f"میز(های) موردنظر برای رزرو {code} را انتخاب کنید (عدد داخل پرانتز ظرفیت است).\n"
-        f"تعداد نفرات: {item['party_size']}",
-        reply_markup=kb.tables_picker(tables, set()),
-    )
-    await cb.answer()
-
-
-@router.callback_query(ConfirmFlow.picking, F.data.startswith("tp:"))
-async def toggle_table(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
-    table_id = int(cb.data.split(":", 1)[1])
-    data = await state.get_data()
-    selected = set(data["selected"])
-    tables = await backend.tables(cb.from_user.id, data["space"], data["code"])
-    available_ids = {t["id"] for t in tables}
-    if table_id not in available_ids:
-        selected.discard(table_id)
-        await state.update_data(selected=sorted(selected))
-        await cb.message.edit_reply_markup(reply_markup=kb.tables_picker(tables, selected))
-        await cb.answer("وضعیت این میز تغییر کرده یا قابل انتخاب نیست؛ فهرست به‌روزرسانی شد.", show_alert=True)
-        return
-    selected.symmetric_difference_update({table_id})
-    await state.update_data(selected=sorted(selected))
-    await cb.message.edit_reply_markup(reply_markup=kb.tables_picker(tables, selected))
-    await cb.answer()
-
-
-@router.callback_query(ConfirmFlow.picking, F.data == "tpdone")
-async def confirm_done(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
-    data = await state.get_data()
-    if not data["selected"]:
-        await cb.answer("حداقل یک میز انتخاب کنید.", show_alert=True)
-        return
     try:
-        await backend.confirm(cb.from_user.id, data["code"], data["selected"])
+        await backend.confirm(cb.from_user.id, code, [])
     except AdminBackendError as exc:
-        try:
-            tables = await backend.tables(cb.from_user.id, data["space"], data["code"])
-            available_ids = {t["id"] for t in tables}
-            refreshed = sorted(set(data["selected"]) & available_ids)
-            if refreshed != sorted(data["selected"]):
-                await state.update_data(selected=refreshed)
-                await cb.message.edit_reply_markup(
-                    reply_markup=kb.tables_picker(tables, set(refreshed))
-                )
-                await cb.answer(
-                    "وضعیت میزها تغییر کرده بود؛ فهرست به‌روزرسانی شد. دوباره انتخاب کنید.",
-                    show_alert=True,
-                )
-                return
-        except AdminBackendError:
-            pass
         await cb.answer(exc.message, show_alert=True)
         return
-    await state.clear()
-    await cb.message.answer(f"رزرو {data['code']} تأیید شد ✅")
-    await cb.answer()
-
-
-@router.callback_query(ConfirmFlow.picking, F.data == "tpcancel")
-async def confirm_cancel(cb: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await cb.message.answer("تخصیص میز لغو شد.")
-    await cb.answer()
+    await cb.message.answer(
+        f"رزرو {code} با موفقیت تأیید شد ✅\nپیام تأیید و فاکتور برای مهمان ارسال می‌شود. تخصیص میز فعلاً غیرفعال است."
+    )
+    await cb.answer("رزرو تأیید شد ✅")
 
 
 @router.callback_query(F.data.startswith("no:"))
@@ -234,29 +164,8 @@ async def show_receipt(cb: CallbackQuery, backend: AdminBackend) -> None:
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("assign:"))
-async def resume_table_assignment(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
-    code = cb.data.split(":", 1)[1]
-    items = await backend.reservations(cb.from_user.id, ["receipt_submitted"])
-    item = next((i for i in items if i["public_code"] == code), None)
-    if item is None or item.get("payment_status") != "verified":
-        await cb.answer("پرداخت تأییدشده‌ای برای تخصیص میز پیدا نشد.", show_alert=True)
-        return
-    tables = await backend.tables(cb.from_user.id, item["space_code"], code)
-    if not tables:
-        await cb.answer("میزی برای نمایش وجود ندارد؛ وضعیت میزها را در بخش «میزها» بررسی کنید.", show_alert=True)
-        return
-    await state.set_state(ConfirmFlow.picking)
-    await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
-    await cb.message.answer(
-        f"میزهای این رزرو را بررسی و انتخاب کنید. تعداد نفرات: {item['party_size']}",
-        reply_markup=kb.tables_picker(tables, set()),
-    )
-    await cb.answer()
-
-
 @router.callback_query(F.data.startswith("pay:"))
-async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBackend) -> None:
+async def verify_payment(cb: CallbackQuery, backend: AdminBackend) -> None:
     code = cb.data.split(":", 1)[1]
     items = await backend.reservations(cb.from_user.id, ["receipt_submitted"])
     item = next((i for i in items if i["public_code"] == code), None)
@@ -268,21 +177,10 @@ async def verify_payment(cb: CallbackQuery, state: FSMContext, backend: AdminBac
     except AdminBackendError as exc:
         await cb.answer(exc.message, show_alert=True)
         return
-    tables = await backend.tables(cb.from_user.id, item["space_code"], code)
-    if not tables:
-        await cb.message.answer(
-            f"پرداخت {code} تأیید شد ✅ اما میز فعالی با ظرفیت تنظیم‌شده برای انتخاب پیدا نشد. "
-            "لطفاً بخش «میزها» را بررسی کنید."
-        )
-        await cb.answer()
-        return
-    await state.set_state(ConfirmFlow.picking)
-    await state.update_data(code=code, selected=[], party=item["party_size"], space=item["space_code"])
     await cb.message.answer(
-        f"پرداخت {code} تأیید شد ✅\nاکنون میز موردنظر را با بررسی وضعیت و تداخل‌ها انتخاب کنید.\nتعداد نفرات: {item['party_size']}",
-        reply_markup=kb.tables_picker(tables, set()),
+        f"پرداخت رزرو {code} تأیید شد و رزرو نهایی گردید ✅\nفاکتور و پیام تأیید برای مهمان ارسال می‌شود. تخصیص میز فعلاً غیرفعال است."
     )
-    await cb.answer()
+    await cb.answer("پرداخت و رزرو تأیید شد ✅")
 
 
 # ---------- tables ----------
