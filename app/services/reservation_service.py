@@ -296,8 +296,9 @@ async def _enqueue_confirmation_invoice(session: AsyncSession, reservation: Rese
         await session.execute(
             select(Customer.full_name, Customer.phone, Space.name)
             .select_from(Reservation)
-            .join(Customer, Customer.id == reservation.customer_id)
-            .join(Space, Space.id == reservation.space_id)
+            .join(Customer, Customer.id == Reservation.customer_id)
+            .join(Space, Space.id == Reservation.space_id)
+            .where(Reservation.id == reservation.id)
         )
     ).one()
     snapshot_items = reservation.price_snapshot.get("items", [])
