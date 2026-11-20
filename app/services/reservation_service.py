@@ -256,8 +256,12 @@ async def verify_payment(
     payment.amount_verified = amount_verified
     payment.verified_at = now.astimezone(UTC)
     payment.verified_by_telegram_id = actor_telegram_id
+    assert_transition(reservation.status, ReservationStatus.CONFIRMED)
+    reservation.status = ReservationStatus.CONFIRMED.value
     await _audit(session, actor_telegram_id, "payment.verified", "reservation", public_code, {"amount": amount_verified})
-
+    await _audit(session, actor_telegram_id, "reservation.confirmed", "reservation", public_code,
+                 {"table_assignment": "disabled", "payment_verified": True})
+    await _enqueue_confirmation_invoice(session, reservation)
 
 async def reject_payment(
     session: AsyncSession,
@@ -275,20 +279,63 @@ async def reject_payment(
     payment.status = PaymentStatus.REJECTED.value
     payment.rejection_reason = reason
     await _audit(session, actor_telegram_id, "payment.rejected", "reservation", public_code, {"reason": reason})
+    if reservation.created_by_telegram_id:
+        from app.services.notification_service import enqueue
+        await enqueue(session, telegram_user_id=reservation.created_by_telegram_id, kind="payment_rejected",
+                      text=(f"رسید پرداخت رزرو {public_code} تأیید نشد.\nدلیل: {reason}\n\n"
+                            "لطفاً پس از بررسی، رسید صحیح را دوباره ارسال کنید یا با پشتیبانی تماس بگیرید."))
 
+async def _enqueue_confirmation_invoice(session: AsyncSession, reservation: Reservation) -> None:
+    if not reservation.created_by_telegram_id:
+        return
+    from app.domain.pricing import DESIGN_LABELS
+    from app.core.timezone import to_jalali_str
+    from app.services.notification_service import enqueue
 
-async def confirm_reservation(
+    customer_name, customer_phone, space_name = (
+        await session.execute(
+            select(Customer.full_name, Customer.phone, Space.name)
+            .join(Customer, Customer.id == reservation.customer_id)
+            .join(Space, Space.id == reservation.space_id)
+        )
+    ).one()
+    snapshot_items = reservation.price_snapshot.get("items", [])
+    digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    invoice_lines = [
+        "🧾 فاکتور نهایی رزرو NIV",
+        "━━━━━━━━━━━━━━",
+        f"کد پیگیری: {reservation.public_code}",
+        f"نام مشتری: {customer_name}",
+        f"شماره تماس: {customer_phone}",
+        f"تاریخ و ساعت: {to_jalali_str(reservation.booking_start)}",
+        f"فضا: {space_name}",
+        f"تعداد نفرات: {reservation.party_size}",
+        f"دیزاین: {DESIGN_LABELS.get(DesignCode(reservation.design), reservation.design) if reservation.design != DesignCode.NONE.value else 'بدون دیزاین'}",
+        f"کیک: {'بله' if reservation.with_cake else 'خیر'}",
+        "",
+        "جزئیات فاکتور:",
+    ]
+    for line in snapshot_items:
+        invoice_lines.append(f"• {line.get('label', 'مورد رزرو')}: {line.get('total', 0):,} تومان")
+    invoice_lines.extend([
+        "",
+        f"مبلغ نهایی: {reservation.total_amount:,} تومان",
+        "",
+        "وضعیت: رزرو شما با موفقیت تأیید و نهایی شد ✅",
+        "تخصیص میز در این مرحله انجام نمی‌شود؛ در صورت نیاز، هماهنگی‌های بعدی از طریق پشتیبانی انجام خواهد شد.",
+        "در صورت نیاز به هرگونه تغییر در رزرو، لطفاً از طریق بخش پشتیبانی با ما در ارتباط باشید.",
+        "",
+        "کافه‌رستوران NIV ❤️",
+    ])
+    await enqueue(session, telegram_user_id=reservation.created_by_telegram_id,
+                   kind="reservation_confirmed_invoice", text="\n".join(invoice_lines).translate(digits))\n\nasync def confirm_reservation(
     session: AsyncSession,
     *,
     public_code: str,
-    table_ids: list[int],
+    table_ids: list[int] | None = None,
     actor_telegram_id: int,
 ) -> Reservation:
-    """Manager confirms a reservation and assigns tables atomically.
-
-    Plain reservation: must be pending manager approval.
-    Design reservation: payment must be verified first.
-    """
+    """Manager confirms a reservation. Table assignment is temporarily disabled."""
     reservation = await _get_reservation_for_update(session, public_code)
     if reservation.design != DesignCode.NONE.value:
         payment = await _get_payment(session, reservation.id)
@@ -296,102 +343,14 @@ async def confirm_reservation(
             raise PaymentStateError("پرداخت این رزرو هنوز تأیید نشده است.")
     elif reservation.status != ReservationStatus.PENDING_MANAGER.value:
         raise DomainError("این رزرو در وضعیت تأیید مدیر نیست.")
+
     assert_transition(reservation.status, ReservationStatus.CONFIRMED)
-
-    unique_ids = sorted(set(table_ids))
-    tables = (
-        await session.execute(select(Table).where(Table.id.in_(unique_ids)).order_by(Table.id).with_for_update())
-    ).scalars().all()
-    if len(tables) != len(unique_ids):
-        raise NotFoundError("یک یا چند میز انتخابی یافت نشد.")
-    for t in tables:
-        if t.space_id != reservation.space_id:
-            raise DomainError("میز انتخابی متعلق به فضای این رزرو نیست.")
-        if t.is_blocked or not t.is_active:
-            raise DomainError(f"میز {t.number} در حال حاضر مسدود یا غیرفعال است.")
-        if t.capacity is None:
-            raise CapacityNotConfiguredError(f"ظرفیت میز {t.number} هنوز تنظیم نشده است.")
-    if sum(t.capacity for t in tables) < reservation.party_size:
-        raise DomainError("مجموع ظرفیت میزهای انتخابی کمتر از تعداد نفرات است.")
-
-    try:
-        async with session.begin_nested():
-            for t in tables:
-                await session.execute(
-                    insert(TableBooking).values(
-                        table_id=t.id,
-                        reservation_id=reservation.id,
-                        booking_range=func.tstzrange(reservation.booking_start, reservation.booking_end, "[)"),
-                        kind="reservation",
-                        is_active=True,
-                    )
-                )
-    except IntegrityError as exc:
-        raise TableConflictError("یکی از میزهای انتخابی در این بازه زمانی رزرو شده است.") from exc
-
     reservation.status = ReservationStatus.CONFIRMED.value
-    await _audit(
-        session,
-        actor_telegram_id,
-        "reservation.confirmed",
-        "reservation",
-        public_code,
-        {"table_ids": unique_ids},
-    )
-
-    if reservation.created_by_telegram_id:
-        from app.domain.pricing import DESIGN_LABELS
-        from app.core.timezone import to_jalali_str
-        from app.services.notification_service import enqueue
-
-        customer_name, customer_phone, space_name = (
-            await session.execute(
-                select(Customer.full_name, Customer.phone, Space.name)
-                .join(Customer, Customer.id == reservation.customer_id)
-                .join(Space, Space.id == reservation.space_id)
-            )
-        ).one()
-        snapshot_items = reservation.price_snapshot.get("items", [])
-        digits = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-        invoice_lines = [
-            "🧾 فاکتور نهایی رزرو NIV",
-            "━━━━━━━━━━━━━━",
-            f"کد پیگیری: {reservation.public_code}",
-            f"نام مشتری: {customer_name}",
-            f"شماره تماس: {customer_phone}",
-            f"تاریخ و ساعت: {to_jalali_str(reservation.booking_start)}",
-            f"فضا: {space_name}",
-            f"تعداد نفرات: {reservation.party_size}",
-        ]
-        if reservation.design != DesignCode.NONE.value:
-            invoice_lines.append(f"دیزاین: {DESIGN_LABELS.get(DesignCode(reservation.design), reservation.design)}")
-        else:
-            invoice_lines.append("دیزاین: بدون دیزاین")
-        invoice_lines.append(f"کیک: {'بله' if reservation.with_cake else 'خیر'}")
-        invoice_lines.extend(["", "جزئیات فاکتور:"])
-        for line in snapshot_items:
-            invoice_lines.append(f"• {line.get('label', 'مورد رزرو')}: {line.get('total', 0):,} تومان")
-        invoice_lines.extend([
-            "",
-            f"مبلغ نهایی: {reservation.total_amount:,} تومان",
-            f"میز(ها): {', '.join(str(t.number) for t in tables)}",
-            "",
-            "وضعیت: رزرو شما با موفقیت تأیید و نهایی شد ✅",
-            "در صورت نیاز به هرگونه تغییر در رزرو، لطفاً از طریق بخش پشتیبانی با ما در ارتباط باشید.",
-            "",
-            "کافه‌رستوران NIV ❤️",
-        ])
-        invoice_text = "\n".join(invoice_lines).translate(digits)
-        await enqueue(
-            session,
-            telegram_user_id=reservation.created_by_telegram_id,
-            kind="reservation_confirmed_invoice",
-            text=invoice_text,
-        )
-
+    await _audit(session, actor_telegram_id, "reservation.confirmed", "reservation", public_code,
+                 {"table_assignment": "disabled"})
+    await _enqueue_confirmation_invoice(session, reservation)
     await session.flush()
     return reservation
-
 
 async def reject_reservation(
     session: AsyncSession,
@@ -404,7 +363,11 @@ async def reject_reservation(
     assert_transition(reservation.status, ReservationStatus.REJECTED)
     reservation.status = ReservationStatus.REJECTED.value
     await _audit(session, actor_telegram_id, "reservation.rejected", "reservation", public_code, {"reason": reason})
-
+    if reservation.created_by_telegram_id:
+        from app.services.notification_service import enqueue
+        await enqueue(session, telegram_user_id=reservation.created_by_telegram_id, kind="reservation_rejected",
+                      text=(f"مشتری گرامی 🌷\n\nدرخواست رزرو {public_code} متأسفانه تأیید نشد.\n"
+                            f"دلیل: {reason}\n\nدر صورت نیاز می‌توانید با پشتیبانی NIV در ارتباط باشید.\n\nکافه‌رستوران NIV ❤️"))
 
 async def cancel_by_customer(
     session: AsyncSession,
